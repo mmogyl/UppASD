@@ -32,6 +32,9 @@ module Chelper
    use MetaTypes
    use Omegas
 
+   use prn_cudameasurements,   only :  print_observable
+
+
    implicit none
 
 
@@ -39,9 +42,20 @@ module Chelper
 
    public :: fortran_do_measurements,fortran_measure,fortran_measure_moment,        &
       fortran_moment_update,fortran_flush_measurements,FortranData_Initiate,        &
-      fortran_calc_simulation_status_variables
+      fortran_calc_simulation_status_variables, fortran_print_measurables
 
 contains
+
+   ! Printinf mesurables calculated in CUDA
+   subroutine fortran_print_measurables(obs_step, obs_buff, obs_label, obs_buffer, mstep)
+      implicit none
+      real(dblprec), dimension(3,Natom, Mensemble), intent(in) :: obs_buffer
+      integer, intent(in) :: obs_step, obs_buff
+      char, intent(in) :: obs_label
+
+      call print_observable(simid, Mensemble, obs_step, obs_buff, &
+      indxb_obs, obs_buffer, obs_label, real_time_measure, delta_t, mstep)
+   end subroutine fortran_print_measurables
 
    subroutine array_test(A,B,arr)
       implicit none
@@ -168,9 +182,19 @@ contains
       character(len=1), intent(in) :: STT       !< Treat spin transfer torque? (Y/N)
       real(dblprec), dimension(3,Natom, Mensemble), intent(inout) :: btorque !< Field from (m x dm/dr)
 
-      call FortranData_setConstants(stt,SDEalgh,rstep,nstep,Natom,Mensemble,        &
-         ham%max_no_neigh,delta_t,gama,k_bolt,mub,mplambda1,binderc,mavg,mompar,    &
-         initexc,ham_inp%do_dm,ham%max_no_dmneigh, ham_inp%do_jtensor, ham_inp%do_anisotropy, nHam)
+      !call FortranData_setConstants(stt,SDEalgh,rstep,nstep,Natom,Mensemble,        &
+      !   ham%max_no_neigh,delta_t,gama,k_bolt,mub,mplambda1,binderc,mavg,mompar,    &
+      !   initexc,ham_inp%do_dm,ham%max_no_dmneigh, ham_inp%do_jtensor, ham_inp%do_anisotropy, nHam)
+
+      call FortranData_setFlags(ham_inp%do_dm, ham_inp%do_jtensor, ham_inp%do_anisotropy, &
+                              prn_averages%do_cuda_avrg, AutoCorrelation%do_autocorr)
+
+      call FortranData_setConstants(stt, SDEalgh, rstep, nstep, Natom, Mensemble, &
+         ham%max_no_neigh, nHam, ham%max_no_dmneigh, & 
+         delta_t, gama, k_bolt, mub, mplambda1, &
+         binderc, mavg, mompar, initexc,    &
+         prn_averages%avrg_step, prn_averages%avrg_buff, &
+         prn_averages%eavrg_step, prn_averages%eavrg_buff_size)
 
       !call FortranData_setMatrices(ham%ncoup(1,1,1),ham%nlist(1,1),ham%nlistsize(1),&
       !   beff(1,1,1),b2eff(1,1,1),emomM(1,1,1),emom(1,1,1),emom2(1,1,1),            &
@@ -178,11 +202,22 @@ contains
       !   mmom2(1,1),mmomi(1,1),ham%dm_vect(1,1,1),ham%dmlist(1,1),ham%dmlistsize(1))
 
 
-      call FortranData_setMatrices(ham%ncoup,ham%nlist,ham%nlistsize,&
-         beff,b2eff,emomM,emom,emom2,            &
-         external_field,mmom,btorque,Temp_array,mmom0,   &
-         mmom2,mmomi,ham%dm_vect,ham%dmlist,ham%dmlistsize, ham%j_tens, ham%kaniso, ham%eaniso, ham%taniso, ham%sb, ham%aHam)
+      call FortranData_setHamiltonian(ham%ncoup,ham%nlist,ham%nlistsize, &
+         ham%dm_vect,ham%dmlist,ham%dmlistsize, &
+         ham%kaniso, ham%eaniso, ham%taniso, ham%sb, &
+         ham%j_tens, ham%aHam, &
+         external_field, btorque,Temp_array)
 
+      call FortranData_setLattice(beff, b2eff, emomM,emom,emom2, mmom, mmom0, mmom2, mmomi)
+
+      call FortranData_setMeasurables(prn_averages%mavg_buff, prn_averages%mavg2_buff, prn_averages%mavg4_buff,&
+         prn_averages%eavg_buff, prn_averages%eavg2_buff) 
+
+      !call FortranData_setMeasurables(prn_averages%do_cuda_avrg, prn_averages%avrg_step, prn_averages%avrg_buff, &
+      !   prn_averages%mavg_buff, prn_averages%mavg2_buff, prn_averages%mavg4_buff,&
+      !   prn_averages%do_cuda_en, prn_averages%eavrg_step, prn_averages%eavrg_buff, &
+      !   prn_averages%eavg_buff, prn_averages%eavg2_buff, &
+      !   AutoCorrelation%do_cuda_autocorr) 
       call FortranData_setInputData(gpu_mode, gpu_rng, gpu_rng_seed)
 
    end subroutine FortranData_Initiate
