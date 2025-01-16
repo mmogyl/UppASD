@@ -29,9 +29,10 @@ void CudaSimulation::initiateConstants() {
     Flags.do_dm = static_cast<bool>(*FortranData::do_dm);
     Flags.do_jtensor = static_cast<bool>(*FortranData::do_jtensor);
     Flags.do_aniso = static_cast<bool>(*FortranData::do_aniso);
-    //Flags.do_avrg = static_cast<bool>(*FortranData::do_avrg);
-    //Flags.do_cumu = static_cast<bool>(*FortranData::do_cumu);
-
+    Flags.do_mavrg = static_cast<bool>(*FortranData::do_mavrg);
+    Flags.do_eavrg = static_cast<bool>(*FortranData::do_eavrg);
+    Flags.do_cuda_meas = static_cast<bool>(*FortranData::do_cuda_meas);
+   
     SimParam.N = *FortranData::Natom;
     SimParam.NH  = *FortranData::nHam;
     SimParam.M = *FortranData::Mensemble;
@@ -54,10 +55,10 @@ void CudaSimulation::initiateConstants() {
     SimParam.binderc = FortranData::binderc;
     SimParam.mavg = FortranData::mavg;
 
-   // SimParam.avrg_step = *FortranData::avrg_step;  
-   // SimParam.avrg_buff = *FortranData::avrg_buff; 
-    //SimParam.cumu_step = *FortranData::cumu_step; 
-    //SimParam.cumu_buff = *FortranData::cumu_buff; 
+    SimParam.mavrg_step = *FortranData::mavrg_step;  
+    SimParam.eavrg_step = *FortranData::eavrg_step;  
+    SimParam.mavrg_buff_size = *FortranData::mavrg_buff_size; 
+    SimParam.eavrg_buff_size = *FortranData::eavrg_buff_size;  
 
     switch(*FortranData::gpu_rng) {
     case 0: SimParam.rngType = CURAND_RNG_PSEUDO_DEFAULT; break;
@@ -115,6 +116,11 @@ void CudaSimulation::initiate_fortran_cpu_matrices() {
     cpuLattice.mmomi.set(FortranData::mmomi, N, M);
     cpuLattice.btorque.set(FortranData::btorque, 3, N, M);
     cpuLattice.temperature.set(FortranData::temperature, N);
+
+    if(Flags.do_cuda_meas){
+        if(Flags.do_mavrg) cpuMeasurables.mavg_buff.set(FortranData::mavg_buff, SimParam.mavrg_buff_size);
+        if(Flags.do_eavrg) cpuMeasurables.eavg_buff.set(FortranData::eavg_buff, SimParam.eavrg_buff_size);
+    }
 
    /* if (Flags.do_mphase_now != 0){
         if (Flags.do_avrg !=0){
@@ -181,6 +187,7 @@ bool CudaSimulation::initiateMatrices() {
     gpuHamiltonian.extfield.Allocate(3, N, M);
     gpuLattice.beff.Allocate(3, N, M);
     gpuLattice.b2eff.Allocate(3, N, M);
+    gpuLattice.eneff.Allocate(3, N, M);
     gpuLattice.emomM.Allocate(3, N, M);
     gpuLattice.emom.Allocate(3, N, M);
     gpuLattice.emom2.Allocate(3, N, M);
@@ -189,9 +196,14 @@ bool CudaSimulation::initiateMatrices() {
     gpuLattice.mmom2.Allocate(N, M);
     gpuLattice.mmomi.Allocate(N, M);
    
+    gpuLattice.eneff.zeros();
+
     //gpuLattice.temperature.initiate(N); //is initiated if we run SD or MC simulation inside corresponding classes where they are requires
     if(FortranData::btorque) {gpuLattice.btorque.Allocate(3, N, M);} 
-
+    if(Flags.do_cuda_meas){
+        if(Flags.do_mavrg) gpuMeasurebles.mavg_buff.Allocate(SimParam.mavrg_buff_size);
+        if(Flags.do_eavrg) gpuMeasurebles.eavg_buff.Allocate(SimParam.eavrg_buff_size);
+    }
    /* if (Flags.do_mphase_now != 0){
         if (Flags.do_avrg !=0){
             gpuMeasurables.mavg_buff.Allocate(N, M);
@@ -236,6 +248,7 @@ bool CudaSimulation::gpuHasNoData(){
                     gpuHamiltonian.extfield.empty() || 
                     gpuLattice.beff.empty() || 
                     gpuLattice.b2eff.empty() || 
+                    gpuLattice.eneff.empty() || 
                     gpuLattice.emomM.empty() || 
                     gpuLattice.emom.empty() || 
                     gpuLattice.emom2.empty() || 
@@ -243,7 +256,9 @@ bool CudaSimulation::gpuHasNoData(){
                     gpuLattice.mmom0.empty() || 
                     gpuLattice.mmom2.empty() || 
                     gpuLattice.mmomi.empty() ||
-                    (gpuLattice.btorque.empty()&& (FortranData::btorque != nullptr)));
+                    (gpuLattice.btorque.empty()&& (FortranData::btorque != nullptr))||
+                    (gpuMeasurebles.mavg_buff.empty()&& (Flags.do_cuda_meas != nullptr)&& (Flags.do_mavrg != nullptr))||
+                    (gpuMeasurebles.eavg_buff.empty()&& (Flags.do_cuda_meas != nullptr)&& (Flags.do_eavrg != nullptr)));
     //TODO: add measurables
     return check;
 }
@@ -273,6 +288,7 @@ void CudaSimulation::release() {
    gpuHamiltonian.extfield.Free();  
     gpuLattice.beff.Free();  
     gpuLattice.b2eff.Free();   
+    gpuLattice.eneff.Free();   
     gpuLattice.emomM.Free();  
     gpuLattice.emom.Free();  
     gpuLattice.emom2.Free();   
@@ -282,11 +298,12 @@ void CudaSimulation::release() {
     gpuLattice.mmomi.Free();
      if(FortranData::btorque) {gpuLattice.btorque.Free();  }
 
-    
+if(Flags.do_cuda_meas){
+if(Flags.do_mavrg) gpuMeasurebles.mavg_buff.Free();
+if(Flags.do_eavrg) gpuMeasurebles.eavg_buff.Free();
 
-   // gpuMeasurables.mavg_buff.Free();  
-   // gpuMeasurables.mcumu_buff.Free();  
-  
+}
+    
 
 }
 
@@ -328,8 +345,10 @@ void CudaSimulation::copyFromFortran() {
     gpuLattice.mmom2.copy_sync(cpuLattice.mmom2);  
     gpuLattice.mmomi.copy_sync(cpuLattice.mmomi);  
     if(FortranData::btorque) {gpuLattice.btorque.copy_sync(cpuLattice.btorque); } 
-   // gpuMeasurables.mavg_buff.copy_sync(cpuMeasurables.mavg_buff);  
-   // gpuMeasurables.mcumu_buff.copy_sync(cpuMeasurables.mcumu_buff);
+ if (Flags.do_cuda_meas){
+    if(Flags.do_mavrg) gpuMeasurebles.mavg_buff.copy_sync(cpuMeasurebles.mavg_buff);
+    if(Flags.do_eavrg) gpuMeasurebles.eavg_buff.copy_sync(cpuMeasurebles.eavg_buff);
+ }
    }
 }
 void CudaSimulation::copyToFortran() {
@@ -343,6 +362,10 @@ void CudaSimulation::copyToFortran() {
     cpuLattice.mmom0.copy_sync(gpuLattice.mmom0);  
     cpuLattice.mmom2.copy_sync(gpuLattice.mmom2);  
     cpuLattice.mmomi.copy_sync(gpuLattice.mmomi);  
+     if (Flags.do_cuda_meas){
+    if(Flags.do_mavrg) cpuMeasurebles.mavg_buff.copy_sync(gpuMeasurebles.mavg_buff);
+    if(Flags.do_eavrg) cpuMeasurebles.eavg_buff.copy_sync(gpuMeasurebles.eavg_buff);
+ }
    // gpuMeasurables.mavg_buff.copy_sync(cpuMeasurables.mavg_buff);  
     //gpuMeasurables.mcumu_buff.copy_sync(cpuMeasurables.mcumu_buff);
    }
@@ -356,9 +379,14 @@ printf("current type %i\n", whichsim);
         if(whichphase == 0) {
             CudaSD.SDiphase(*this);
         }
-        else if(whichphase == 1) {
+        else if((whichphase == 1)||(Flags.do_cuda_meas)) {
+            CudaSD.SDm_cuda_phase(*this);
+        }
+        else if((whichphase == 1)||(!Flags.do_cuda_meas)) {
             CudaSD.SDmphase(*this);
         }
+        
+        
         else {printf("Wrong phase! 0 - initial, 1 - measurement");}
     }
      else if(whichsim == 1){

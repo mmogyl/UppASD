@@ -10,8 +10,10 @@ struct Flag {
    bool do_dm;
    bool do_jtensor;
    unsigned int do_aniso;
-   bool do_avrg;
-   bool do_cumu;    
+   bool do_cuda_meas;
+   bool do_mavrg;
+   bool do_eavrg;
+   //bool do_cumu;    
    bool do_iphase_now;    
    bool do_mphase_now;    
 };
@@ -34,10 +36,11 @@ struct SimulationParameters {
    real mub;
    real damping;
 
-   std::size_t avrg_step;  
-   std::size_t avrg_buff;
-   std::size_t cumu_step;
-   std::size_t cumu_buff;  
+   std::size_t mavrg_step;  
+   std::size_t mavrg_buff_size;
+   std::size_t eavrg_step;  
+   std::size_t eavrg_buff_size;
+
 
    int mompar;
    char initexc;
@@ -84,9 +87,9 @@ struct hostLattice {
 struct hostMeasurables {    
    Tensor<real, 1> mavg_buff;
    Tensor<real, 1> eavg_buff;
-   Tensor<real, 1> mcumu_buff;
-   Tensor<real, 1> ecumu_buff;
-   Tensor<real, 1> binderc; 
+   //Tensor<real, 1> mcumu_buff;
+   //Tensor<real, 1> ecumu_buff;
+   //Tensor<real, 1> binderc; 
 };
    
 struct cudaHamiltonian {
@@ -109,6 +112,7 @@ struct cudaLattice {
    CudaTensor<real, 3> beff;
    CudaTensor<real, 3> b2eff;
    CudaTensor<real, 3> emomM;
+   CudaTensor<real, 3> eneff;
    CudaTensor<real, 3> emom;
    CudaTensor<real, 3>  emom2;
    CudaTensor<real, 2>  mmom;
@@ -122,8 +126,8 @@ struct cudaLattice {
 struct cudaMeasurables {    
    CudaTensor<real, 1> mavg_buff;
    CudaTensor<real, 1> eavg_buff;
-   CudaTensor<real, 1> mcumu_buff;
-   CudaTensor<real, 1> ecumu_buff;
+  // CudaTensor<real, 1> mcumu_buff;
+  // CudaTensor<real, 1> ecumu_buff;
    CudaTensor<real, 1> binderc;
 };
    

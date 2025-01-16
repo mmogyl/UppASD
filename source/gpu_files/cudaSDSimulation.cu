@@ -1,3 +1,4 @@
+#pragma once
 #include <cuda.h>
 #include <curand.h>
 
@@ -7,6 +8,7 @@
 #include "cudaGPUErrchk.hpp"
 #include "cudaHamiltonianCalculations.hpp"
 #include "cudaMeasurement.hpp"
+#include "cudaMeasurementCalculations.cuh"
 #include "cudaMomentUpdater.hpp"
 #include "cudaParallelizationHelper.hpp"
 #include "cudaSimulation.hpp"
@@ -74,7 +76,7 @@ void CudaSimulation::CudaSDSimulation::SDiphase(CudaSimulation& cudaSim) {
 
    // Initiate integrator and Hamiltonian
    if(!integrator.initiate(cudaSim.SimParam)) {
-      std::fprintf(stderr, "CudaMdSimulation: integrator failed to initiate!\n");
+      std::fprintf(stderr, "CudaSDSimulation: integrator failed to initiate!\n");
       return;
    }
    if(!hamCalc.initiate(cudaSim.Flags, cudaSim.SimParam, cudaSim.gpuHamiltonian)) {
@@ -176,7 +178,7 @@ void CudaSimulation::CudaSDSimulation::SDmphase(CudaSimulation& cudaSim) {
 
    // Initiate integrator and Hamiltonian
    if(!integrator.initiate(cudaSim.SimParam)) {  // TODO
-      std::fprintf(stderr, "CudaMdSimulation: integrator failed to initiate!\n");
+      std::fprintf(stderr, "CudaSDSimulation: integrator failed to initiate!\n");
       return;
    }
 
@@ -258,4 +260,120 @@ void CudaSimulation::CudaSDSimulation::SDmphase(CudaSimulation& cudaSim) {
    cudaDeviceSynchronize();
    stopwatch.add("final synchronize");
 }
+
+
+void CudaSimulation::CudaSDSimulation::SDm_cuda_phase(CudaSimulation& cudaSim) {
+   // Unbuffered printf
+   std::setbuf(stdout, nullptr);
+   std::setbuf(stderr, nullptr);
+   std::printf("CudaSDSimulation: SD measurement phase starting\n");
+
+   // Initiated?
+   if(!cudaSim.isInitiated) {
+      std::fprintf(stderr, "CudaSimulation: not initiated!\n");
+      return;
+   }
+
+   // Timer
+   StopwatchDeviceSync stopwatch = StopwatchDeviceSync(GlobalStopwatchPool::get("Cuda measurement phase"));
+
+   // Initiate default parallelization helper
+   CudaParallelizationHelper::def.initiate(cudaSim.SimParam.N, cudaSim.SimParam.M, cudaSim.SimParam.NH);
+   // Depontd integrator
+   CudaDepondtIntegrator integrator;
+
+   // Hamiltonian calculations
+   CudaHamiltonianCalculations hamCalc;
+
+   // Moment updater
+   CudaMomentUpdater momUpdater(cudaSim.gpuLattice, cudaSim.SimParam.mompar, cudaSim.SimParam.initexc);
+   // Measurement
+   CudaMeasurementCalculations measCalc;
+
+   // Initiate integrator and Hamiltonian
+   if(!integrator.initiate(cudaSim.SimParam)) {  // TODO
+      std::fprintf(stderr, "CudaSDSimulation: integrator failed to initiate!\n");
+      return;
+   }
+
+   if(!hamCalc.initiate(cudaSim.Flags, cudaSim.SimParam, cudaSim.gpuHamiltonian)) {  // TODO
+      std::fprintf(stderr, "CudaSDSimulation: Hamiltonian failed to initiate!\n");
+      return;
+   }
+
+      if(!measCalc.initiate(cudaSim.Flags, cudaSim.SimParam)) {  // TODO
+      std::fprintf(stderr, "CudaSDSimulation: measurements failed to initiate!\n");
+      return;
+   }
+
+   // TEMPORARY PRINTING
+   std::printf("\n");
+   std::printf("________DEBUG System Information:___________ \n");
+   std::printf("%zu\n", cudaSim.cpuHamiltonian.j_tensor.extent(0));
+   std::printf("%zu\n", cudaSim.cpuHamiltonian.j_tensor.extent(1));
+   std::printf("%zu\n", cudaSim.cpuHamiltonian.j_tensor.extent(2));
+   std::printf("%zu\n", cudaSim.cpuHamiltonian.j_tensor.extent(3));
+   std::printf("______________________________________\n");
+   int mnn = cudaSim.cpuHamiltonian.j_tensor.extent(2);
+   int l = cudaSim.cpuHamiltonian.j_tensor.extent(3);
+   int NH = cudaSim.cpuHamiltonian.j_tensor.extent(3);
+   std::printf("_______________________________________________\n");
+
+   // Initiate constants for integrator
+   integrator.initiateConstants(cudaSim.SimParam, cudaSim.cpuLattice);
+
+
+   // Timing
+   stopwatch.add("initiate");
+
+   size_t nstep = cudaSim.SimParam.nstep;
+   size_t rstep = cudaSim.SimParam.rstep;
+
+   // Time step loop
+   for(std::size_t mstep = rstep + 1; mstep <= rstep + nstep; mstep++) {
+      // Measure
+      measCalc.runMeasurement(cudaSim.gpuLattice, cudaSim.cpuMeasurebles, mstep)
+      stopwatch.add("measurement");
+
+      // Print simulation status for each 5% of the simulation length
+      printMdStatus(mstep, cudaSim);
+
+      // Apply Hamiltonian to obtain effective field
+      hamCalc.heisge(cudaSim.gpuLattice);
+      stopwatch.add("hamiltonian");
+
+      // Perform first step of SDE solver
+      integrator.evolveFirst(cudaSim.gpuLattice);
+      stopwatch.add("evolution");
+
+      // Apply Hamiltonian to obtain effective field
+      hamCalc.heisge(cudaSim.gpuLattice);
+      stopwatch.add("hamiltonian");
+
+      // Perform second (corrector) step of SDE solver
+      integrator.evolveSecond(cudaSim.gpuLattice);
+      stopwatch.add("evolution");
+      // Update magnetic moments after time evolution step
+      momUpdater.update();
+      stopwatch.add("moments");
+
+      // Check for error
+      cudaError_t e = cudaGetLastError();
+      if(e != cudaSuccess) {
+         std::printf("Uncaught CUDA error %d: %s\n", e, cudaGetErrorString(e));
+         cudaDeviceReset();
+         std::exit(EXIT_FAILURE);
+      }
+
+   }  // End loop over simulation steps
+
+   // Final measure
+   measCalc.runMeasurement(cudaSim.gpuLattice, cudaSim.cpuMeasurebles, rstep + nstep + 1)
+   stopwatch.add("measurement");
+
+   // Synchronize with device
+   cudaDeviceSynchronize();
+   stopwatch.add("final synchronize");
+}
+
 

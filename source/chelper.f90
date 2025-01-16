@@ -47,14 +47,14 @@ module Chelper
 contains
 
    ! Printinf mesurables calculated in CUDA
-   subroutine fortran_print_measurables(obs_step, obs_buff, obs_label, obs_buffer, mstep)
+   subroutine fortran_print_measurables(obs_step, obs_buff, obs_label, obs_dim, obs_buffer, mstep)
       implicit none
-      real(dblprec), dimension(3,Natom, Mensemble), intent(in) :: obs_buffer
+      real(dblprec), dimension(obs_dim, Natom, Mensemble), intent(in) :: obs_buffer
       integer, intent(in) :: obs_step, obs_buff
       char, intent(in) :: obs_label
 
       call print_observable(simid, Mensemble, obs_step, obs_buff, &
-      indxb_obs, obs_buffer, obs_label, real_time_measure, delta_t, mstep)
+      obs_dim, indxb_obs, obs_buffer, obs_label, real_time_measure, delta_t, mstep)
    end subroutine fortran_print_measurables
 
    subroutine array_test(A,B,arr)

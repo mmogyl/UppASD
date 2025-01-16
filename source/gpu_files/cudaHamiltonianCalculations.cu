@@ -190,6 +190,7 @@ public:
 class CudaHamiltonianCalculations::HeisgeJij : public CudaParallelizationHelper::AtomSiteEnsemble {
 private:
    real* beff;
+   real* eneff;
    const real* coup;
    const unsigned int* pos;
    const real* emomM;
@@ -201,11 +202,12 @@ private:
    const unsigned int* aham;
 
 public:
-   HeisgeJij(CudaTensor<real, 3>& p1, const CudaTensor<real, 3>& p2, const CudaTensor<real, 3>& p3, const Exchange& ex, const DMinteraction& dm,
+   HeisgeJij(CudaTensor<real, 3>& p_beff, CudaTensor<real, 3>& p_eneff, const CudaTensor<real, 3>& p_emomM, const CudaTensor<real, 3>& p_ext_f, const Exchange& ex, const DMinteraction& dm,
              const HamRed& redHam) {
-      beff = p1.data();
-      emomM = p2.data();
-      ext_f = p3.data();
+      beff = p_beff.data();
+      eneff = p_eneff.data();
+      emomM = p_emomM.data();
+      ext_f = p_ext_f.data();
 
       coup = ex.coupling.data();
       pos = ex.neighbourPos.data();
@@ -261,12 +263,17 @@ public:
       beff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
       beff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
       beff[atom * 3 + 2] = z + ext_f[atom * 3 + 2];
+
+      eneff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
+      eneff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
+      eneff[atom * 3 + 2] = z + ext_f[atom * 3 + 2];
    }
 };
 
 class CudaHamiltonianCalculations::HeisJijTensor : public CudaParallelizationHelper::AtomSiteEnsemble {
 private:
    real* beff;
+   real* eneff;
    const real* tensor;
    const unsigned int* pos;
    const unsigned int* size;
@@ -276,11 +283,12 @@ private:
    const unsigned int* aham;
 
 public:
-   HeisJijTensor(CudaTensor<real, 3>& p1, const CudaTensor<real, 3>& p2, const CudaTensor<real, 3>& p3, const TensorialExchange& tenEx,
+   HeisJijTensor(CudaTensor<real, 3>& p_beff, CudaTensor<real, 3>& p_eneff, const CudaTensor<real, 3>& p_emomM, const CudaTensor<real, 3>& p_ext_f, const TensorialExchange& tenEx,
                  const HamRed& redHam) {
-      beff = p1.data();
-      emomM = p2.data();
-      ext_f = p3.data();
+      beff = p_beff.data();
+      eneff = p_eneff.data();
+      emomM = p_emomM.data();
+      ext_f = p_ext_f.data();
 
       tensor = tenEx.tensor.data();
       pos = tenEx.neighbourPos.data();
@@ -336,12 +344,17 @@ public:
       beff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
       beff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
       beff[atom * 3 + 2] = z + ext_f[atom * 3 + 2];
+
+      eneff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
+      eneff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
+      eneff[atom * 3 + 2] = z + ext_f[atom * 3 + 2];
    }
 };
 
 class CudaHamiltonianCalculations::HeisgeJijAniso : public CudaParallelizationHelper::AtomSiteEnsemble {
 private:
    real* beff;
+   real* eneff;
    const real* emomM;
    const real* kaniso;
    const real* eaniso;
@@ -349,9 +362,10 @@ private:
    const real* sb;
 
 public:
-   HeisgeJijAniso(CudaTensor<real, 3>& p1, const CudaTensor<real, 3>&  p2, const Anisotropy& aniso) {
-      beff = p1.data();
-      emomM = p2.data();
+   HeisgeJijAniso(CudaTensor<real, 3>& p_beff, CudaTensor<real, 3>& p_eneff, const CudaTensor<real, 3>&  p_emomM, const Anisotropy& aniso) {
+      beff = p_beff.data();
+      eneff = p_eneff.data();
+      emomM = p_emomM.data();
       kaniso = aniso.kaniso.data();
       eaniso = aniso.eaniso.data();
       taniso = aniso.taniso.data();
@@ -363,6 +377,10 @@ public:
       real x = (real)0.0;
       real y = (real)0.0;
       real z = (real)0.0;
+
+      real x_en = (real)0.0;
+      real y_en = (real)0.0;
+      real z_en = (real)0.0;
       // Magnetic moment at current site/atom
       real Sx = (real)0.0;
       real Sy = (real)0.0;
@@ -393,9 +411,16 @@ public:
          const real tt2 = k1 + (real)2.0 * k2 * (1 - tt1 * tt1);
          const real tt3 = (real)2.0 * tt1 * tt2;
 
+         const real tt2_en = k1 + k2 * ((real)2.0 - tt1 * tt1);
+         const real tt3_en = tt1 * tt2_en;
+
          x += -tt3 * ex;
          y += -tt3 * ey;
          z += -tt3 * ez;
+
+         x_en += -tt3_en * ex; //To Anders: sign????
+         y_en += -tt3_en * ey;
+         z_en += -tt3_en * ez;
       }
       if(type == 2 || type == 7) {  // cubic anisotropy
 
@@ -411,12 +436,20 @@ public:
          x += (real)2.0 * k1_cubic * Sx * (Sy * Sy + Sz * Sz) + (real)2.0 * k2_cubic * Sx * Sy * Sy * Sz * Sz;
          y += (real)2.0 * k1_cubic * Sy * (Sz * Sz + Sx * Sx) + (real)2.0 * k2_cubic * Sy * Sz * Sz * Sx * Sx;
          z += (real)2.0 * k1_cubic * Sz * (Sx * Sx + Sy * Sy) + (real)2.0 * k2_cubic * Sz * Sx * Sx * Sy * Sy;
+
+         x_en += k1_cubic * Sx * (Sy * Sy + Sz * Sz)/((real)2.0) + k2_cubic * Sx * Sy * Sy * Sz * Sz/((real)3.0);//To Anders: sign???
+         y_en += k1_cubic * Sy * (Sz * Sz + Sx * Sx)/((real)2.0) + k2_cubic * Sy * Sz * Sz * Sx * Sx/((real)3.0);
+         z_en += k1_cubic * Sz * (Sx * Sx + Sy * Sy)/((real)2.0) + k2_cubic * Sz * Sx * Sx * Sy * Sy/((real)3.0);
       }
 
       // Save field
       beff[atom * 3 + 0] += x;
       beff[atom * 3 + 1] += y;
       beff[atom * 3 + 2] += z;
+
+      eneff[atom * 3 + 0] += x_en;
+      eneff[atom * 3 + 1] += y_en;
+      eneff[atom * 3 + 2] += z_en;
    }
 };
 
@@ -424,6 +457,7 @@ class CudaHamiltonianCalculations::HeisgeJijElement
     : public CudaParallelizationHelper::ElementAxisSiteEnsemble {
 private:
    real* beff;
+   real* eneff;
    const real* coup;
    const unsigned int* pos;
    const unsigned int* size;
@@ -433,10 +467,11 @@ private:
    const unsigned int* aham;
 
 public:
-   HeisgeJijElement(CudaTensor<real, 3>& p1, const CudaTensor<real, 3>& p5, const CudaTensor<real, 3>& p6, const Exchange& ex, const HamRed& redHam) {
-      beff = p1.data();
-      emomM = p5.data();
-      ext_f = p6.data();
+   HeisgeJijElement(CudaTensor<real, 3>& p_beff,CudaTensor<real, 3>& p_eneff, const CudaTensor<real, 3>& p_emomM, const CudaTensor<real, 3>& p_ext_f, const Exchange& ex, const HamRed& redHam) {
+      beff = p_beff.data();
+      eneff = p_eneff.data();
+      emomM = p_emomM.data();
+      ext_f = p_ext_f.data();
       coup = ex.coupling.data();
       pos = ex.neighbourPos.data();
       size = ex.neighbourCount.data();
@@ -465,6 +500,7 @@ public:
 
       // Save field
       beff[element] = f + ext_f[element];
+      eneff[element] = f + ext_f[element];
    }
 };
 
@@ -591,14 +627,14 @@ void CudaHamiltonianCalculations::heisge(cudaLattice& gpuLattice) {
    // Kernel call
 
    if(do_j_tensor == 1) {
-      parallel.cudaAtomSiteEnsembleCall(HeisJijTensor(gpuLattice.beff, gpuLattice.emomM, external_field, tenEx, redHam));
+      parallel.cudaAtomSiteEnsembleCall(HeisJijTensor(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, tenEx, redHam));
 
    } else {
-      parallel.cudaAtomSiteEnsembleCall(HeisgeJij(gpuLattice.beff, gpuLattice.emomM, external_field, ex, dm, redHam));
+      parallel.cudaAtomSiteEnsembleCall(HeisgeJij(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, ex, dm, redHam));
    }
 
    if(do_aniso != 0) {
-      parallel.cudaAtomSiteEnsembleCall(HeisgeJijAniso(gpuLattice.beff, gpuLattice.emomM, aniso));
+      parallel.cudaAtomSiteEnsembleCall(HeisgeJijAniso(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, aniso));
    }
 
    return;

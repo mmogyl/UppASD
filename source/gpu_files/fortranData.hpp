@@ -44,9 +44,11 @@ public:
    static unsigned int* rstep;
    static unsigned int* nstep;
    static unsigned int* Natom;
-   static unsigned int* nHam;
    static unsigned int* Mensemble;
+   
    static unsigned int* max_no_neigh;
+   static unsigned int* nHam;
+   static unsigned int* max_no_dmneigh;
 
    static real* delta_t;
    static real* gamma;
@@ -61,12 +63,19 @@ public:
    static char* initexc;
 
    static unsigned int* do_dm;
-   static unsigned int* max_no_dmneigh;
 
    static unsigned int*
        do_jtensor;  // Information on weather the exchange coupling tensor should be used or not
    static unsigned int* do_aniso;  // Information on weather the anisotropy should be used or not
-
+   
+   static unsigned int* do_cuda_meas;
+   static unsigned int* do_mavrg;
+   static unsigned int* do_eavrg;
+   static unsigned int* do_autocorr;
+   static unsigned int* mavrg_step;
+   static unsigned int* mavrg_buff_size;
+   static unsigned int* eavrg_step;
+   static unsigned int* eavrg_buff_size;
    // Matrices / vectors
    static unsigned int * aHam;
 
@@ -103,17 +112,34 @@ public:
    static int* gpu_rng;
    static int* gpu_rng_seed;
 
-   // Initiators
-   static void setConstantPointers(char* p1, int* p2, unsigned int* p3, unsigned int* p4, unsigned int* p5,
-                                   unsigned int* p6, unsigned int* p7, real* p8, real* p9, real* p10,
-                                   real* p11, real* p12, real* p13, real* p14, int* p15, char* p16,
-                                   unsigned int* p17, unsigned int* p18, unsigned int* p19,
-                                   unsigned int* p20, unsigned int* p21);
+    static real* mavg_buff;
+    static real* mavg2_buff; 
+    static real* mavg4_buff;
+    static real* eavg_buff;
+    static real* eavg2_buff;
 
-   static void setMatrixPointers(real* p1, unsigned int* p2, unsigned int* p3, real* p4, real* p5, real* p6,
-                                 real* p7, real* p8, real* p9, real* p10, real* p11, real* p12, real* p13,
-                                 real* p14, real* p15, real* p16, unsigned int* p17, unsigned int* p18,
-                                 real* p19, real* p20, real* p21, unsigned int* p22, real* p23, unsigned int* p24);
+   // Initiators
+   static void setFlagPointers(unsigned int* p_do_dm, unsigned int* p_do_jtensor, unsigned int* p_do_anisotropy, 
+                              unsigned int* p_do_cuda_meas, unsigned int* p_do_mavrg, unsigned int* p_do_eavrg, unsigned int* p_do_autocorr);
+
+
+   static void setConstantPointers(char* p_stt, int* p_SDEalgh, unsigned int* p_rstep, unsigned int* p_nstep, unsigned int* p_Natom, unsigned int* p_Mensemble, 
+                                    unsigned int* p_max_no_neigh, unsigned int* p_nHam, unsigned int* p_max_no_dmneigh,  
+                                    real* p_delta_t, real* p_gama, real* p_k_bolt, real* p_mub, real* p_mplambda1, 
+                                    real* p_binderc, real* p_mavg,  int* p_mompar, char* p_initexc,    
+                                    unsigned int* p_avrg_step, unsigned int* p_avrg_buff, 
+                                    unsigned int* p_eavrg_step, unsigned int* p_eavrg_buff_size);
+
+   static void setHamiltonianPointers(real* p_ncoup, unsigned int* p_nlist,unsigned int* p_nlistsize, 
+                                    real* p_dm_vect, unsigned int* p_dmlist,unsigned int* p_dmlistsize, 
+                                    real* p_kaniso, real* p_eaniso, unsigned int* p_taniso, real* p_sb, 
+                                    real* p_tens, unsigned int* p_aHam, 
+                                    real* p_external_field, real* p_btorque, real* p_Temp_array);
+
+    static void setLatticePointers(real* p_beff, real* p_b2eff, real* p_emomM, real* p_emom, real* p_emom2, real* p_mmom, real* p_mmom0, real* p_mmom2, real* p_mmomi);
+
+    static void setMeasurablePointers(real* p_mavg_buff, real* p_mavg2_buff, real* p_mavg4_buff,
+                                    real* p_eavg_buff, real* p_eavg2_buff);
 
    static void setInputDataPointers(int* p1, int* p2, int* p3);
 };
