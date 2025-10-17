@@ -204,9 +204,13 @@ INCLUDE(${CMAKE_MODULE_PATH}/SetFortranFlags.cmake)
 IF(USE_OPENMP)
    FIND_PACKAGE(OpenMP)
    message(STATUS "Did we find OpenMP? ${OpenMP_Fortran_FOUND}")
+   message(STATUS "Which are the OpenMP flags?  ${OpenMP_Fortran_FLAGS}")
+
 
    if(OpenMP_Fortran_FOUND)
-      set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+        set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+        target_link_libraries(${UppASD_LIB} PRIVATE OpenMP::OpenMP_Fortran)
+
    endif()
 
 ENDIF(USE_OPENMP)
@@ -253,7 +257,7 @@ if(BUILD_DOXYGEN)
    else (DOXYGEN_FOUND)
       message("Doxygen need to be installed to generate the doxygen documentation")
    endif (DOXYGEN_FOUND)
-endif()
+endif()   
 ##############################################################################################
 
 
@@ -335,7 +339,7 @@ if (USE_CUDA)
    endif ()
    target_sources(${UppASD_LIB} PRIVATE ${SRC}/chelper.f90)
    add_subdirectory(${SRC}/gpu_files)
-   set_source_files_properties(${SRC}/gpu_files/gpuDepondtIntegrator.cpp ${SRC}/gpu_files/gpuEventPool.cpp ${SRC}/gpu_files/gpuHamiltonianCalculations.cpp ${SRC}/gpu_files/gpuMomentUpdater.cpp ${SRC}/gpu_files/gpuMeasurement.cpp  ${SRC}/gpu_files/gpuSDSimulation.cpp ${SRC}/gpu_files/gpuSimulation.cpp ${SRC}/gpu_files/gpuParallelizationHelper.cpp PROPERTIES LANGUAGE CUDA)
+   set_source_files_properties(${SRC}/gpu_files/gpuDepondtIntegrator.cpp ${SRC}/gpu_files/gpuEventPool.cpp ${SRC}/gpu_files/gpuHamiltonianCalculations.cpp ${SRC}/gpu_files/gpuMomentUpdater.cpp ${SRC}/gpu_files/gpuMeasurement.cpp  ${SRC}/gpu_files/gpuSDSimulation.cpp  ${SRC}/gpu_files/gpuMCSimulation.cpp ${SRC}/gpu_files/gpuSimulation.cpp ${SRC}/gpu_files/gpuParallelizationHelper.cpp ${SRC}/gpu_files/gpuMetropolis.cpp ${SRC}/gpu_files/gpuMetropolis_bruteforce.cpp ${SRC}/gpu_files/measurement/fortranMeasurement.cpp ${SRC}/gpu_files/measurement/gpuMeasurement.cpp ${SRC}/gpu_files/measurement/kernels.cpp ${SRC}/gpu_files/correlations/fortranCorrelation.cpp PROPERTIES LANGUAGE CUDA)
    add_compile_definitions(CUDA_V)
    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} -DDEBUG")
    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
@@ -357,7 +361,15 @@ if (USE_CUDA)
    string(REPLACE " " ";" INSTALLED_GPU_CCS_3 "${INSTALLED_GPU_CCS_2}")
    string(REPLACE "." "" CUDA_ARCH_LIST "${INSTALLED_GPU_CCS_3}")
    SET(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
-   SET_TARGET_PROPERTIES(${UppASD_LIB} PROPERTIES CUDA_ARCHITECTURES "${CUDA_ARCH_LIST}")
+   # Workaround to avoid +PTX specification
+   if (CMAKE_CUDA_ARCHITECTURES MATCHES "^[__86+PTX]")
+     set(CMAKE_CUDA_ARCHITECTURES 86)
+     SET_TARGET_PROPERTIES(${UppASD_LIB} PROPERTIES CUDA_ARCHITECTURES 86)
+   else()
+     SET_TARGET_PROPERTIES(${UppASD_LIB} PROPERTIES CUDA_ARCHITECTURES "${CUDA_ARCH_LIST}")
+   endif()
+   message(STATUS "CUDA_ARCH_LIST: __${CUDA_ARCH_LIST}__")
+   message(STATUS "CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
 elseif(USE_HIP)
    find_package(HIP REQUIRED)
    add_compile_definitions(HIP_V)
@@ -426,6 +438,7 @@ endif()
 if(USE_VSL AND MKL_FOUND)
    add_compile_definitions(VSL)
    #add_compile_definitions(USE_VSL)
+      include_directories($ENV{MKLROOT}/include)
 endif()
 ##############################################################################################
 
@@ -486,7 +499,7 @@ if(BUILD_PYTHON)
       set(f2py_module_name "uppasd")
       SET(UppASD_F90w f90_wraps)
       set(F90wrap_kind
-         ${CMAKE_SOURCE_DIR}/cmake/.f2py_f2cmap
+         ${CMAKE_SOURCE_DIR}/cmake/.f2py_f2cmapPRIVATE
          )
 
       # Uncomment if f90wrap needs to be invoked
@@ -601,7 +614,7 @@ mark_as_advanced( ENABLE_BLACS ENABLE_BLAS95 ENABLE_CDFT ENABLE_CPARDISO ENABLE_
 # Add the needed libraries and special compiler flags
 ##############################################################################################
 ########hip here?????
-TARGET_LINK_LIBRARIES(${UppASD_LIB}
+TARGET_LINK_LIBRARIES(${UppASD_LIB} PRIVATE
    -lgfortran
    ${BLAS_LIBRARIES}
    ${LAPACK_LIBRARIES}
@@ -614,7 +627,7 @@ TARGET_LINK_LIBRARIES(${UppASD_LIB}
 #    ${HIP_LIBRARIES}
    )
 
-TARGET_LINK_LIBRARIES(${UppASD_EXE}
+TARGET_LINK_LIBRARIES(${UppASD_EXE} PRIVATE
    -lgfortran
    ${UppASD_LIB}
    ${BLAS_LIBRARIES}

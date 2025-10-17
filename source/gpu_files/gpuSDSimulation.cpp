@@ -8,6 +8,7 @@
 #include "gpuMomentUpdater.hpp"
 #include "gpuSimulation.hpp"
 #include "gpuStructures.hpp"
+#include "gpuStructures.hpp"
 #include "fortranData.hpp"
 #include "real_type.h"
 #include "stopwatch.hpp"
@@ -15,14 +16,18 @@
 #include "stopwatchPool.hpp"
 #include "tensor.hpp"
 #include "gpuParallelizationHelper.hpp"
+#include "measurementFactory.hpp"
+#include "correlationFactory.hpp"
 
 #include "gpu_wrappers.h"
 #if defined(HIP_V)
 #include <hip/hip_runtime.h>
 #include <hiprand/hiprand.h>
+#include "gpuCorrelations.hpp"
 #elif defined(CUDA_V)
 #include <cuda.h>
 #include <curand.h>
+#include "gpuCorrelations.cuh"
 #endif
 
 using ParallelizationHelper = GpuParallelizationHelper;
@@ -41,7 +46,7 @@ void GpuSimulation::GpuSDSimulation::printMdStatus(std::size_t mstep, GpuSimulat
       if(mstep % ((gpuSim.SimParam.rstep + gpuSim.SimParam.nstep) / 20) == 0) {
          gpuSim.copyToFortran();  // This is run so seldomly it has not impact on overall performance
          fortran_calc_simulation_status_variables(gpuSim.SimParam.mavg);
-         std::printf("CUDA: %3ld%% done. Mbar: %10.6f. U: %8.5f.\n",
+         std::printf("GPU: %3ld%% done. Mbar: %10.6f. U: %8.5f.\n",
                      mstep * 100 / (gpuSim.SimParam.rstep + gpuSim.SimParam.nstep),
                      *gpuSim.SimParam.mavg,
                      *gpuSim.SimParam.binderc);
@@ -120,7 +125,7 @@ void GpuSimulation::GpuSDSimulation::SDiphase(GpuSimulation& gpuSim) {
    for(unsigned int it = 0; it < ipnphase; it++){
    steps = gpuSim.cpuLattice.ipnstep(it);
 
-   // Time step loop
+   // Time step loopA9T/sv*m
    for(std::size_t mstep = 1; mstep <= steps; mstep++) {
       // Print simulation status for each 5% of the simulation length
       // printMdStatus(mstep); -- Do we need it in initial phase?
@@ -168,7 +173,7 @@ void GpuSimulation::GpuSDSimulation::SDiphase(GpuSimulation& gpuSim) {
 
 // Spin Dynamics measurement phase
 void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
-   // Unbuffered printf
+   // Unbuffered printfA9T/sv*m
    std::setbuf(stdout, nullptr);
    std::setbuf(stderr, nullptr);
    std::printf("GpuSDSimulation: SD measurement phase starting\n");
@@ -193,12 +198,9 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    // Moment updater
    GpuMomentUpdater momUpdater(gpuSim.gpuLattice, gpuSim.SimParam.mompar, gpuSim.SimParam.initexc);
    // Measurement
-   GpuMeasurement measurement(gpuSim.gpuLattice.emomM,
-                               gpuSim.gpuLattice.emom,
-                               gpuSim.gpuLattice.mmom,
-                               gpuSim.cpuLattice.emomM,
-                               gpuSim.cpuLattice.emom,
-                               gpuSim.cpuLattice.mmom);
+   const auto measurement = MeasurementFactory::create(gpuSim.gpuLattice, gpuSim.cpuLattice);
+   //Corrrelations
+   const auto correlation = CorrelationFactory::create(gpuSim.gpuLattice, gpuSim.cpuLattice, gpuSim.Flags, gpuSim.SimParam, gpuSim.cpuCorrelations);
 
    // Initiate integrator and Hamiltonian
    if(!integrator.initiate(gpuSim.SimParam)) {  // TODO
@@ -227,7 +229,6 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    // Initiate constants for integrator
    integrator.initiateConstants(gpuSim.SimParam, gpuSim.cpuLattice.temperature);
 
-
    // Timing
    stopwatch.add("initiate");
 
@@ -237,7 +238,8 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    // Time step loop
    for(std::size_t mstep = rstep + 1; mstep <= rstep + nstep; mstep++) {
       // Measure
-      measurement.measure(mstep);
+      measurement->measure(mstep);
+      correlation->measure(mstep);
       stopwatch.add("measurement");
 
       // Print simulation status for each 5% of the simulation length
@@ -273,11 +275,13 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    }  // End loop over simulation steps
 
    // Final measure
-   measurement.measure(rstep + nstep + 1);  // TODO
+   measurement->measure(rstep + nstep + 1);  // TODO
+   correlation->measure(rstep + nstep + 1);  // TODO
    stopwatch.add("measurement");
 
    // Print remaining measurements
-   measurement.flushMeasurements(rstep + nstep + 1);  // TODO
+   measurement->flushMeasurements(rstep + nstep + 1);  // TODO
+  // correlation->flushCorrelations(rstep + nstep + 1); 
    stopwatch.add("flush measurement");
 
    // Synchronize with device

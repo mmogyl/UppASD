@@ -4,6 +4,8 @@
 #include "tensor.hpp"
 #include "real_type.h"
 
+#include <thrust/complex.h>
+
 #include "gpu_wrappers.h"
 #if defined(HIP_V)
 #include <hiprand/hiprand.h>
@@ -20,6 +22,8 @@ struct Flag {
    bool do_cumu;    
    bool do_iphase_now;    
    bool do_mphase_now;    
+   char do_sc;
+   bool do_gpu_correlations;
 };
 
 struct SimulationParameters {    
@@ -51,6 +55,16 @@ struct SimulationParameters {
 
    int mompar;
    char initexc;
+
+   std::size_t sc_sep;
+   std::size_t sc_step;
+   std::size_t nw;
+   std::size_t nq;
+   std::size_t sc_max_nstep;
+   std::size_t sc_window_fun;
+
+
+
     // Thermfield parameters
 #if defined(HIP_V)
    hiprandRngType_t rngType;
@@ -107,6 +121,16 @@ struct hostMeasurables {
    Tensor<real, 1> mcumu_buff;
    Tensor<real, 1> ecumu_buff;
    Tensor<real, 1> binderc; 
+};
+
+struct hostCorrelations {    
+   Tensor<real, 2> coord;
+   Tensor<real, 1> r_mid;
+   Tensor<real, 2> q;
+   Tensor<real, 1> w;
+   Tensor<thrust::complex<real>, 2> m_k;
+   Tensor<thrust::complex<real>, 3> m_kt;
+   Tensor<thrust::complex<real>, 3> m_kw;
 };
    
 struct deviceHamiltonian {

@@ -28,14 +28,20 @@ GpuSimulation::~GpuSimulation() {
 }
 
 void GpuSimulation::initiateConstants() {
+   //printf("HERE - 0\n");
+
     SimParam.SDEalgh = *FortranData::SDEalgh;
     if(!(SimParam.SDEalgh == 1 || SimParam.SDEalgh == 4 || SimParam.SDEalgh == 5 || SimParam.SDEalgh == 11)) {
         std::fprintf(stderr, "Invalid SDEalgh!\n");
         std::exit(EXIT_FAILURE);
     }
+
     Flags.do_dm = static_cast<bool>(*FortranData::do_dm);
     Flags.do_jtensor = static_cast<bool>(*FortranData::do_jtensor);
     Flags.do_aniso = static_cast<bool>(*FortranData::do_aniso);
+
+    Flags.do_sc = *FortranData::do_sc;
+    Flags.do_gpu_correlations = static_cast<bool>(*FortranData::do_gpu_correlations);
     //Flags.do_avrg = static_cast<bool>(*FortranData::do_avrg);
     //Flags.do_cumu = static_cast<bool>(*FortranData::do_cumu);
 
@@ -66,6 +72,13 @@ void GpuSimulation::initiateConstants() {
 
     SimParam.binderc = FortranData::binderc;
     SimParam.mavg = FortranData::mavg;
+
+    SimParam.sc_sep = *FortranData::sc_sep;
+    SimParam.sc_step = *FortranData::sc_step;
+    SimParam.sc_window_fun = *FortranData::sc_window_fun;
+    SimParam.nq = *FortranData::nq;
+    SimParam.nw = *FortranData::nw;
+    SimParam.sc_max_nstep = *FortranData::sc_max_nstep;
 
    // SimParam.avrg_step = *FortranData::avrg_step;  
    // SimParam.avrg_buff = *FortranData::avrg_buff; 
@@ -105,6 +118,7 @@ switch(*FortranData::gpu_rng) {
 }
 
 void GpuSimulation::initiate_fortran_cpu_matrices() {
+
     long int N = static_cast <long int>( SimParam.N);
     long int  NH = static_cast <long int>( SimParam.NH);
     long int  M = static_cast <long int>( SimParam.M);
@@ -112,6 +126,8 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
     long int  mnndm = static_cast <long int>( SimParam.mnndm);
    long int ipnphase = static_cast <long int>( SimParam.ipnphase);
     long int ipmcnphase = static_cast <long int>( SimParam.ipmcnphase);
+    long int nq = static_cast <long int>( SimParam.nq);
+    long int nw= static_cast <long int>( SimParam.nw);
 
     // Constants initiated?
     if(N == 0 || M == 0 || NH == 0) {
@@ -152,6 +168,12 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
     cpuLattice.ipmcnstep.set(FortranData::ipmcnstep, ipmcnphase);
     cpuLattice.ipTemp_array.set(FortranData::ipTemp_array, N, ipnphase);
     cpuLattice.ipnstep.set(FortranData::ipnstep, ipnphase);
+    if(Flags.do_gpu_correlations){
+        cpuCorrelations.r_mid.set(FortranData::r_mid, static_cast <long int>(3));
+        cpuCorrelations.q.set(FortranData::q, static_cast <long int>(3), nq);
+        cpuCorrelations.w.set(FortranData::w, nw);
+        cpuCorrelations.coord.set(FortranData::coord, static_cast <long int>(3), N);
+    }
   // printf("HERE - 2\n");
 
   //  if(FortranData::ipnstep == nullptr)printf("ITS EMPTY\n");
@@ -166,11 +188,14 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
             //cpuMeasurables.ecumu_buff.set(FortranData::ecumu_buff, SimParam.cumu_buff); 
         }
     }*/
+        
+
 
 }
 
 bool GpuSimulation::initiateMatrices() {
    // Dimensions
+   printf("Initiate matrices GPU -1\n");
     long int N = static_cast <long int>( SimParam.N);
     long int NH = static_cast <long int>(SimParam.NH);
     long int M = static_cast <long int>( SimParam.M);
@@ -339,7 +364,9 @@ void GpuSimulation::release() {
    // gpuMeasurables.mavg_buff.Free();  
    // gpuMeasurables.mcumu_buff.Free();  
   
-
+    TensorMemoryTracker::printResults();
+    // TensorMemoryTracker::saveToFile();
+    TensorDataMovementTracker::printResults();
 }
 
 void GpuSimulation::copyFromFortran() {
@@ -425,18 +452,18 @@ printf("current type %i\n", whichsim);
         else {printf("Wrong phase! 0 - initial, 1 - measurement");}
     }
     else if(whichsim == 1){
-      /*   CudaMCSimulation CudaMC;//TODO
+         GpuMCSimulation GpuMC;//TODO
 
         if(whichphase == 0) {
-            if(bf == 'Y') CudaMC.MCiphase_bf(*this);
-            else CudaMC.MCiphase(*this);
+            if(bf == 'Y') GpuMC.MCiphase_bf(*this);
+            else GpuMC.MCiphase(*this);
             copyToFortran();
         }
         else if(whichphase == 1) {
-            if(bf == 'Y') CudaMC.MCmphase_bf(*this);
-            else CudaMC.MCmphase(*this);
+            if(bf == 'Y') GpuMC.MCmphase_bf(*this);
+            else GpuMC.MCmphase(*this);
         }
-        else {printf("Wrong phase! 0 - initial, 1 - measurement");}*/
+        else {printf("Wrong phase! 0 - initial, 1 - measurement");}
     }
     else {printf("Wrong simulation type! 0 - SD, 1 - MC; current type %i\n", whichsim);}
     //release();

@@ -19,6 +19,8 @@ module Chelper
         avrg_step, avrg_buff, do_cumu, cumu_step, cumu_buff, &
         mavg_buff, mavg2_buff, mavg4_buff, mavg_buff_proj, mavg2_buff_proj, mavg4_buff_proj, &
         avrgmcum, avrgm2cum, avrgm4cum
+   use prn_topology,     only : skyno, skyno_step, skyno_buff
+   use Gradients,        only : dxyz_vec, dxyz_atom, dxyz_list
    use Energy,           only : eavg_buff, eavg2_buff, eavg4_buff, eavrg_step, eavrg_buff
    use prn_trajectories, only : do_tottraj, ntraj, tottraj_buff, tottraj_step, &
         traj_step, traj_buff, traj_atom, mmomb, mmomb_traj, emomb, emomb_traj
@@ -32,10 +34,16 @@ module Chelper
 
    use Correlation
    use Correlation_core
+   use Correlation_Print
+   use Correlation_type
+   use Correlation_utils, only: find_rmid
+   use Omegas
+   use Qvectors
+   use Correlation_utils
    use AutoCorrelation,  only : autocorr_sample, do_autocorr, spinwait, autocorr_buff, indxb_ac
    use ChemicalData, only : achtype
    use MetaTypes
-   use Omegas
+
 
    use prn_cudameasurements,   only :  print_observable, print_trajectory
 
@@ -46,7 +54,8 @@ module Chelper
 
    public :: fortran_do_measurements,fortran_measure,fortran_measure_moment,        &
       fortran_moment_update,fortran_flush_measurements,FortranData_Initiate,        &
-      fortran_calc_simulation_status_variables, fortran_print_measurables
+      fortran_calc_simulation_status_variables, fortran_print_measurables,          &
+      fortran_print_correlations, fortran_measure_correlations
 
 contains
 
@@ -77,7 +86,7 @@ contains
    !> @author
    !> Thomas Nystrand
    !---------------------------------------------------------------------
-   subroutine fortran_calc_simulation_status_variables(mavrg)
+   subroutine fortran_calc_simulation_status_variables(mavrg) bind(C,name='fortran_calc_simulation_status_variables')
       implicit none
       real(dblprec), intent(inout) :: mavrg
       call calc_mavrg(Natom, Mensemble, emomM, mavrg)
@@ -109,6 +118,24 @@ contains
 
    end subroutine fortran_measure
 
+      ! Correlations on Fortran side
+   subroutine fortran_measure_correlations(ext_emomM, ext_emom, ext_mmom, ext_mstep)
+      implicit none
+      real(dblprec), dimension(3,Natom, Mensemble), intent(in) :: ext_emom
+      real(dblprec), dimension(3,Natom, Mensemble), intent(in) :: ext_emomM
+      real(dblprec), dimension(Natom, Mensemble), intent(in)   :: ext_mmom
+      integer, intent(in) :: ext_mstep
+
+      integer :: cgk_flag
+      cgk_flag=0
+
+      ! Spin correlation
+      ! Sample magnetic moments for correlation functions
+         call correlation_wrapper(Natom,Mensemble,coord,simid,emomM,ext_mstep,delta_t,  &
+         NT_meta,atype_meta,Nchmax,achtype,sc,do_sc,do_sr,cgk_flag)
+
+   end subroutine fortran_measure_correlations
+
 
    ! Measurements with pre-set parameters
    subroutine fortran_measure_moment(ext_emomM, ext_emom, ext_mmom, ext_mstep)
@@ -131,8 +158,8 @@ contains
 
       ! Spin correlation
       ! Sample magnetic moments for correlation functions
-         call correlation_wrapper(Natom,Mensemble,coord,simid,emomM,ext_mstep,delta_t,  &
-         NT_meta,atype_meta,Nchmax,achtype,sc,do_sc,do_sr,cgk_flag)
+      !   call correlation_wrapper(Natom,Mensemble,coord,simid,emomM,ext_mstep,delta_t,  &
+      !   NT_meta,atype_meta,Nchmax,achtype,sc,do_sc,do_sr,cgk_flag)
 
    end subroutine fortran_measure_moment
 
@@ -144,7 +171,7 @@ contains
       integer, intent(out) :: do_copy !< Flag if copy or not
 
       call do_measurements(cmstep,do_avrg,do_tottraj,avrg_step,ntraj,tottraj_step,  &
-           traj_step,do_cumu,cumu_step,logsamp,do_copy,do_cuda_measurements)
+           traj_step,do_cumu,cumu_step,logsamp,do_copy,do_gpu_measurements)
    end subroutine fortran_do_measurements
 
 
@@ -161,29 +188,57 @@ contains
    ! Flush measurements with pre-set parameters
    subroutine fortran_flush_measurements(cmstep)
       implicit none
-      integer, intent(in) :: cmstep !< Current simulation step
+      integer, intent(in) :: cmstep !< Current simulation stepfind_rmid(rmid,coord,Natom)
       call flush_measurements(Natom,Mensemble,NT,NA,N1,N2,N3,simid,cmstep,emom,mmom,&
          Nchmax,atype,real_time_measure,mcnstep,ham%ind_list_full,do_mom_legacy,mode)
    end subroutine fortran_flush_measurements
+
+      ! print GPU calculated correlations
+   subroutine fortran_print_correlations()
+      implicit none
+      !type(corr_t), intent(inout) :: cc !< Derived type for correlation data
+      if(do_sc=='C'.or.do_sc=='Y') then
+         call print_gk(NT, Nchmax, sc, sc, simid, sc%label)
+      endif
+     if(do_sc=='Q'.or.do_sc=='Y') then
+         call print_gkw(NT, Nchmax, sc, sc, simid, sc%label)
+      endif
+     if(do_sc=='T'.or.do_sc=='Y') then
+         call print_gkt(NT, Nchmax, sc, sc, simid, sc%label)
+
+      endif
+   end subroutine fortran_print_correlations
 
 
 
    ! Initiate pointers for C/C++ implementation
    !> Calls functions in fortrandata.cpp
-   subroutine FortranData_Initiate(stt,btorque)
+   subroutine FortranData_Initiate(stt,btorque,cc)
+      
       implicit none
-      character(len=1), intent(in) :: STT !< Treat spin transfer torque? (Y/N)
+      character(len=1), intent(in) :: STT !< Treat spi p_sc_max_nstn transfer torque? (Y/N)
+      type(corr_t), intent(inout) :: cc !< Derived type for correlation data
       real(dblprec), dimension(3,Natom, Mensemble), intent(inout) :: btorque !< Field from (m x dm/dr)
+
+      if(cc%do_proj=='C'.or.cc%do_proj=='Y'.or.cc%do_proj=='T'.or.cc%do_proj=='Q'.or.cc%do_projch=='C'.or.cc%do_projch=='Y'.or.cc%do_projch=='Q'.or.cc%do_projch=='T') then
+         print *, "Projections are not available in GPU correlations yet, please use do_gpu_correlations 0"
+         return  
+      end if
+
+      if(do_gpu_correlations=='Y') then
+         call find_rmid(r_mid,coord,Natom)
+      endif
 
       call FortranData_setFlags(ham_inp%do_dm, ham_inp%do_jtensor, ham_inp%do_anisotropy, &
            do_avrg, do_proj_avrg, do_cumu, plotenergy, do_autocorr, do_tottraj, ntraj, &
-           do_cuda_measurements)
+           do_gpu_measurements, skyno, do_sc, do_gpu_correlations)
 
       call FortranData_setConstants(stt,SDEalgh,rstep,nstep,Natom,Mensemble, &
          ham%max_no_neigh,delta_t,gama,k_bolt,mub,mplambda1,binderc,mavg,mompar, &
          initexc,ham%max_no_dmneigh,nHam, Temp, ipmcnphase, mcnstep, ipnphase, &
          avrg_step, avrg_buff, cumu_step, cumu_buff, eavrg_step, eavrg_buff, &
-         tottraj_step, tottraj_buff)
+         tottraj_step, tottraj_buff, skyno_step, skyno_buff, nq, sc_window_fun, &
+         cc%nw, cc%sc_sep, cc%sc_step, cc%sc_max_nstep)
 
       call FortranData_setHamiltonian(ham%ncoup,ham%nlist,ham%nlistsize, &
          ham%dm_vect,ham%dmlist,ham%dmlistsize, &
@@ -192,7 +247,8 @@ contains
          external_field, btorque,Temp_array, &
          ipTemp, ipmcnstep, ipTemp_array, ipnstep)
 
-      call FortranData_setLattice(beff, b2eff, emomM, emom, emom2, mmom, mmom0, mmom2, mmomi)
+      call FortranData_setLattice(beff, b2eff, emomM, emom, emom2, mmom, mmom0, mmom2, mmomi, &
+         dxyz_vec, dxyz_atom, dxyz_list)
 
       call FortranData_setMeasurables( &
            mavg_buff, mavg2_buff, mavg4_buff, &
@@ -203,6 +259,9 @@ contains
            traj_step, traj_buff, traj_atom, &
            mmomb, mmomb_traj, emomb, emomb_traj &
            )
+
+      call FortranData_setCorrelations(q, r_mid, coord, cc%w, cc%m_k, cc%m_kw, cc%m_kt)
+
 
       call FortranData_setInputData(gpu_mode, gpu_rng, gpu_rng_seed)
 
@@ -221,6 +280,7 @@ contains
       call print_observable(simid, Mensemble, obs_name, obs_step, obs_buff, &
       obs_dim, indxb_obs, obs_buffer, obs_label, real_time_measure, delta_t, mstep)
    end subroutine fortran_print_measurables
+
 
 end module Chelper
 
