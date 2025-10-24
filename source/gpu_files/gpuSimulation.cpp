@@ -174,6 +174,8 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
         cpuCorrelations.w.set(FortranData::w, nw);
         cpuCorrelations.coord.set(FortranData::coord, static_cast <long int>(3), N);
     }
+
+
   // printf("HERE - 2\n");
 
   //  if(FortranData::ipnstep == nullptr)printf("ITS EMPTY\n");

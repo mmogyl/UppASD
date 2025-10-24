@@ -58,6 +58,26 @@ void GpuSimulation::GpuSDSimulation::printMdStatus(std::size_t mstep, GpuSimulat
    }
 }
 
+
+void GpuSimulation::GpuSDSimulation::printMdStatusIP(unsigned int steps, std::size_t mstep, GpuSimulation& gpuSim) {
+   if(steps > 20) {
+      if(mstep % ((steps) / 20) == 0) {
+         gpuSim.copyToFortran();  // This is run so seldomly it has not impact on overall performance
+         fortran_calc_simulation_status_variables(gpuSim.SimParam.mavg);
+         std::printf("GPU: %3ld%% done. Mbar: %10.6f. U: %8.5f.\n",
+                     mstep * 100 / (steps),
+                     *gpuSim.SimParam.mavg,
+                     *gpuSim.SimParam.binderc);
+      }
+   } else {
+      gpuSim.copyToFortran();
+      fortran_calc_simulation_status_variables(gpuSim.SimParam.mavg);
+
+      std::printf("GPU: Iteration %ld Mbar %13.6f\n", mstep, *gpuSim.SimParam.mavg);
+   }
+}
+
+
 // Spin Dynamics measurement phase
 void GpuSimulation::GpuSDSimulation::SDiphase(GpuSimulation& gpuSim) {
    // Unbuffered printf
@@ -113,7 +133,7 @@ void GpuSimulation::GpuSDSimulation::SDiphase(GpuSimulation& gpuSim) {
    ipTemp.AllocateHost(N);
 
    for(unsigned int k = 0; k < N; k++){
-      ipTemp(k) = gpuSim.cpuLattice.ipTemp_array(k, 1);
+      ipTemp(k) = gpuSim.cpuLattice.ipTemp_array(k, 0);
    }
    // Initiate constants for integrator
    integrator.initiateConstants(gpuSim.SimParam, ipTemp);
@@ -123,48 +143,54 @@ void GpuSimulation::GpuSDSimulation::SDiphase(GpuSimulation& gpuSim) {
    unsigned int steps;
    int ipnphase = gpuSim.SimParam.ipnphase; 
    for(unsigned int it = 0; it < ipnphase; it++){
-   steps = gpuSim.cpuLattice.ipnstep(it);
 
-   // Time step loopA9T/sv*m
-   for(std::size_t mstep = 1; mstep <= steps; mstep++) {
-      // Print simulation status for each 5% of the simulation length
-      // printMdStatus(mstep); -- Do we need it in initial phase?
+      steps = gpuSim.cpuLattice.ipnstep(it);
+      std::printf("Initial phase %i iteration, steps = %i\n", it+1, steps);
 
-      // Apply Hamiltonian to obtain effective field
-      hamCalc.heisge(gpuSim.gpuLattice);
-      stopwatch.add("hamiltonian");
+      // Time step loopA9T/sv*m
+      for(std::size_t mstep = 1; mstep <= steps; mstep++) {
+         // Print simulation status for each 5% of the simulation length
+         //printMdStatusIP(steps, mstep, gpuSim); //-- Do we need it in initial phase?
 
-      // Perform first step of SDE solver
-      integrator.evolveFirst(gpuSim.gpuLattice);
-      stopwatch.add("evolution");
+         // Apply Hamiltonian to obtain effective field
+         hamCalc.heisge(gpuSim.gpuLattice);
+         stopwatch.add("hamiltonian");
 
-      // Apply Hamiltonian to obtain effective field
-      hamCalc.heisge(gpuSim.gpuLattice);
-      stopwatch.add("hamiltonian");
+         // Perform first step of SDE solver
+         integrator.evolveFirst(gpuSim.gpuLattice);
+         stopwatch.add("evolution");
 
-      // Perform second (corrector) step of SDE solver
-      integrator.evolveSecond(gpuSim.gpuLattice);
-      stopwatch.add("evolution");
+         // Apply Hamiltonian to obtain effective field
+         hamCalc.heisge(gpuSim.gpuLattice);
+         stopwatch.add("hamiltonian");
 
-      // Update magnetic moments after time evolution step
-      momUpdater.update();
-      stopwatch.add("moments");
+         // Perform second (corrector) step of SDE solver
+         integrator.evolveSecond(gpuSim.gpuLattice);
+         stopwatch.add("evolution");
 
-      // Check for error
-      GPU_ERROR_T e = GPU_GET_LAST_ERROR();
-      if(e != GPU_SUCCESS) {
-         std::printf("Uncaught GPU error %d: %s\n", e, GPU_GET_ERROR_STRING(e));
-         GPU_DEVICE_RESET();
-         std::exit(EXIT_FAILURE);
+         // Update magnetic moments after time evolution step
+         momUpdater.update();
+         stopwatch.add("moments");
+
+         // Check for error
+         GPU_ERROR_T e = GPU_GET_LAST_ERROR();
+         if(e != GPU_SUCCESS) {
+            std::printf("Uncaught GPU error %d: %s\n", e, GPU_GET_ERROR_STRING(e));
+            GPU_DEVICE_RESET();
+            std::exit(EXIT_FAILURE);
+         }
+
+      }
+      if(it < (ipnphase - 1)){
+         for(unsigned int k = 0; k < N; k++){
+            ipTemp(k) = gpuSim.cpuLattice.ipTemp_array(k, it + 1);
+         }  
+         integrator.resetConstants(ipTemp);
       }
 
-      for(unsigned int k = 0; k < N; k++){
-      ipTemp(k) = gpuSim.cpuLattice.ipTemp_array(k, it + 1);
-      integrator.resetConstants(ipTemp);
-   }
 
-   }
-   }  // End loop over simulation steps
+   }  
+   // End loop over simulation steps
    // Synchronize with device
    GPU_DEVICE_SYNCHRONIZE();
    stopwatch.add("final synchronize");
@@ -238,7 +264,7 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    // Time step loop
    for(std::size_t mstep = rstep + 1; mstep <= rstep + nstep; mstep++) {
       // Measure
-      measurement->measure(mstep);
+      //measurement->measure(mstep);
       correlation->measure(mstep);
       stopwatch.add("measurement");
 
@@ -281,7 +307,7 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
 
    // Print remaining measurements
    measurement->flushMeasurements(rstep + nstep + 1);  // TODO
-  // correlation->flushCorrelations(rstep + nstep + 1); 
+   correlation->flushCorrelations(rstep + nstep + 1); 
    stopwatch.add("flush measurement");
 
    // Synchronize with device

@@ -50,8 +50,7 @@ public:
       my_bdup[0] = my_bloc[0] + damping * (my_emom[1] * my_bloc[2] - my_emom[2] * my_bloc[1]);
       my_bdup[1] = my_bloc[1] + damping * (my_emom[2] * my_bloc[0] - my_emom[0] * my_bloc[2]);
       my_bdup[2] = my_bloc[2] + damping * (my_emom[0] * my_bloc[1] - my_emom[1] * my_bloc[0]);
-      //if (atom == 0) printf("%.6lf \n", my_emom[0]); 
-   }
+    }
 };
 
 class GpuDepondtIntegrator::Rotate : public ParallelizationHelper::Atom {
@@ -113,6 +112,7 @@ public:
 
       // Rotate
       real mx = my_emom[0], my = my_emom[1], mz = my_emom[2];
+
       my_mrod[0] = mx * M[0][0] + my * M[0][1] + mz * M[0][2];
       my_mrod[1] = mx * M[1][0] + my * M[1][1] + mz * M[1][2];
       my_mrod[2] = mx * M[2][0] + my * M[2][1] + mz * M[2][2];

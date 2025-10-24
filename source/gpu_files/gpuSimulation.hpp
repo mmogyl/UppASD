@@ -28,6 +28,7 @@ class GpuSDSimulation {
 private:
    bool isInitiatedSD;
    void printMdStatus(std::size_t mstep, GpuSimulation& gpuSim);
+   void printMdStatusIP(unsigned int steps, std::size_t mstep, GpuSimulation& gpuSim);
 
 public:
    GpuSDSimulation();

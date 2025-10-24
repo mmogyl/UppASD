@@ -213,6 +213,11 @@ public:
       emomM = p_emomM.data();
       ext_f = p_ext_f.data();
       coup = ex.coupling.data();
+      pos = ex.neighbourPos.data();
+      mnn = ex.mnn;
+      aham = redHam.redNeibourCount.data();
+
+
    }
 
    __device__ void each(unsigned int atom, unsigned int site, unsigned int ensemble) {
@@ -226,11 +231,16 @@ public:
       const real* site_coup = &coup[rsite];
       const unsigned int* site_pos = &pos[site];
       const real* my_emomM = &emomM[ensemble * N * 3];
+
+      //if(atom ==0) printf("rsite = %i, coup = %.6lf, pos = %i, \n", rsite, site_coup[0], site_pos[0]);
+      //if(atom ==0) printf("rsite = %i, coup = %.6lf, pos = %i, myEmom = %.6lf\n", rsite, site_coup[0], site_pos[0], my_emomM[0]);
+      //printf("mnn = %i\n", mnn);
+
       // Exchange term loop
       for(unsigned int i = 0; i < mnn; i++) {
          unsigned int x_offset = site_pos[i * N] * 3;
          real c = site_coup[i * NH];
-         // printf("%f\n", c);
+        //  printf("c = %.4f, x_offset = %i \n", c, x_offset);
          x += c * my_emomM[x_offset + 0];
          y += c * my_emomM[x_offset + 1];
          z += c * my_emomM[x_offset + 2];
@@ -240,6 +250,8 @@ public:
       beff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
       beff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
       beff[atom * 3 + 2] = z + ext_f[atom * 3 + 2];
+
+      //if(atom ==0) printf("x = %.6lf, y = %.6lf, z = %.6lf\n", x,y, z);
 
       eneff[atom * 3 + 0] = x + ext_f[atom * 3 + 0];
       eneff[atom * 3 + 1] = y + ext_f[atom * 3 + 1];
@@ -1053,13 +1065,17 @@ else{
 
 void GpuHamiltonianCalculations::heisge(deviceLattice& gpuLattice) {
    // Kernel call
+        // printf("0- HERE\n");
 
    if(do_j_tensor == 1) {
       if(do_aniso != 0) {
          parallel.gpuAtomSiteEnsembleCall(HeisgeJijTensorAniso(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, tenEx, aniso, redHam));
+         //printf("1- HERE\n");
       }
       else{
          parallel.gpuAtomSiteEnsembleCall(HeisgeJijTensor(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, tenEx, redHam));
+         //printf("2- HERE\n");
+
       }
 
    } 
@@ -1067,17 +1083,25 @@ void GpuHamiltonianCalculations::heisge(deviceLattice& gpuLattice) {
       if(do_dm !=0){
          if(do_aniso !=0){
             parallel.gpuAtomSiteEnsembleCall(HeisgeJijDMAniso(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, ex, dm, aniso, redHam));
+         //printf("3- HERE\n");
+
          }
          else{
             parallel.gpuAtomSiteEnsembleCall(HeisgeJijDM(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, ex, dm, redHam));
+         //printf("4- HERE\n");
+
          }
       }
       else{
          if(do_aniso !=0){
             parallel.gpuAtomSiteEnsembleCall(HeisgeJijAniso(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, ex, dm, aniso, redHam));
+         //printf("5- HERE\n");
+
          }
          else{
             parallel.gpuAtomSiteEnsembleCall(HeisgeJij(gpuLattice.beff, gpuLattice.eneff, gpuLattice.emomM, external_field, ex, redHam));
+         //printf("6- HERE\n");
+
          }
       }     
    }

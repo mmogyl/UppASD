@@ -47,6 +47,8 @@ public:
 
       __device__ void each(unsigned int element) {
          a[element] = b[element] + c[element];
+       //if (element == 0) printf("bloc = %.6lf, beff = %.6lf, term = %.6lf\n", a[0], b[0], c[2]); 
+
       }
    };
 
