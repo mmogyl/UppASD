@@ -720,14 +720,14 @@ void GpuCorrelations::flushCorrelations(hostCorrelations& cpuCorrelations, std::
         tasks = 3 * nq;
         bl = (tasks + maxThreads - 1) / maxThreads;
         GPUSqAvrg << <bl, maxThreads >> > (sc_q_gpu, n_samples, tasks, M);  
-        //TODO cpuCorrelations.m_k.copy_sync(sc_q_gpu);
+        cpuCorrelations.m_k.copy_sync(sc_q_gpu);
         break;
 
     case 'Q':
         dt.copy_sync(dt_cpu);
         GPUSwSum << <blocks_w, maxThreads >> > (sc_qt_gpu, dt, w, sc_block_w_gpu, tasksTot_w, sc_max_nstep, nq, sc_max_nstep, sc_window_fun);//TODO
         GPUSwFinalSum << <nw * nq, 1024 >> > (sc_block_w_gpu, sc_qw_gpu, numBlocksX_w, nq);
-        //TODO cpuCorrelations.m_kw.copy_sync(sc_qw_gpu);
+        cpuCorrelations.m_kw.copy_sync(sc_qw_gpu);
         break;
 
     case 'Y':
@@ -735,10 +735,10 @@ void GpuCorrelations::flushCorrelations(hostCorrelations& cpuCorrelations, std::
         tasks = 3 * nq;
         bl = (tasks + maxThreads - 1) / maxThreads;
         GPUSqAvrg << <bl, maxThreads >> > (sc_q_gpu, n_samples, tasks, M);
-         //TODO cpuCorrelations.m_k.copy_sync(sc_q_gpu); //TODO: async
+        cpuCorrelations.m_k.copy_sync(sc_q_gpu); //TODO: async
         GPUSwSum << <blocks_w, maxThreads >> > (sc_qt_gpu, dt, w, sc_block_w_gpu, tasksTot_w, sc_max_nstep, nq, sc_max_nstep, sc_window_fun);//TODO
         GPUSwFinalSum << <nw*nq, 1024 >> > (sc_block_w_gpu, sc_qw_gpu, numBlocksX_w, nq);//TODO blocks
-        //TODO cpuCorrelations.m_kw.copy_sync(sc_qw_gpu);
+        cpuCorrelations.m_kw.copy_sync(sc_qw_gpu);
         break;
 
     }

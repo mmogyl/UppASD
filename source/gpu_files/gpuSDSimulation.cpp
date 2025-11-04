@@ -264,7 +264,7 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
    // Time step loop
    for(std::size_t mstep = rstep + 1; mstep <= rstep + nstep; mstep++) {
       // Measure
-      //measurement->measure(mstep);
+      measurement->measure(mstep);
       correlation->measure(mstep);
       stopwatch.add("measurement");
 
@@ -307,7 +307,7 @@ void GpuSimulation::GpuSDSimulation::SDmphase(GpuSimulation& gpuSim) {
 
    // Print remaining measurements
    measurement->flushMeasurements(rstep + nstep + 1);  // TODO
-   correlation->flushCorrelations(rstep + nstep + 1); 
+   correlation->flushCorrelations(gpuSim.cpuCorrelations, rstep + nstep + 1); 
    stopwatch.add("flush measurement");
 
    // Synchronize with device
