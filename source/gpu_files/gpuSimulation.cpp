@@ -128,6 +128,8 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
     long int ipmcnphase = static_cast <long int>( SimParam.ipmcnphase);
     long int nq = static_cast <long int>( SimParam.nq);
     long int nw= static_cast <long int>( SimParam.nw);
+    long int sc_max_nstep= static_cast <long int>( SimParam.sc_max_nstep);
+
 
     // Constants initiated?
     if(N == 0 || M == 0 || NH == 0) {
@@ -173,6 +175,10 @@ void GpuSimulation::initiate_fortran_cpu_matrices() {
         cpuCorrelations.q.set(FortranData::q, static_cast <long int>(3), nq);
         cpuCorrelations.w.set(FortranData::w, nw);
         cpuCorrelations.coord.set(FortranData::coord, static_cast <long int>(3), N);
+        cpuCorrelations.m_k.set(FortranData::m_k, static_cast <long int>(3), nq);
+        //cpuCorrelations.m_kt.set(FortranData::m_kt, static_cast <long int>(3), nt, nq, sc_max_nstep);
+        cpuCorrelations.m_kw.set(FortranData::m_kw, static_cast <long int>(3), nq, nw);
+
     }
 
 

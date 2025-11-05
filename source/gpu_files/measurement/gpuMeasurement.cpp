@@ -201,6 +201,7 @@ GpuMeasurement::~GpuMeasurement()
 void GpuMeasurement::measure(std::size_t mstep)
 {
     --mstep; // this is because the simulation loop begins at 1 because of Fortran indexing
+    //printf("measuring measurement\n");
 
     const bool avrg = timeToMeasure(MeasurementType::AverageMagnetization, mstep);
     const bool cumu = timeToMeasure(MeasurementType::BinderCumulant, mstep);

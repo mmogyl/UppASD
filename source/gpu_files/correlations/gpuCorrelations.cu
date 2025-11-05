@@ -11,6 +11,8 @@
 #include <thrust/complex.h>
 #include <curand.h>
 #include <cuda.h>
+#include "c_helper.h"
+
 
 namespace cg = cooperative_groups;
 #ifndef M_PI
@@ -525,6 +527,7 @@ GpuCorrelations::GpuCorrelations(const Flag Flags, const SimulationParameters Si
 , mmom(gpuLattice.mmom) {
 
     isallocated = 0; 
+    //printf("NOT QUEUE\n\n");
     if(!initiate(Flags, SimParam, cpuCorrelations)) {  
       std::fprintf(stderr, "GpuCorrelations: correlations failed to initiate!\n");
       return;
@@ -541,6 +544,7 @@ bool GpuCorrelations::initiate(const Flag Flags, const SimulationParameters SimP
 
     // Parameters
     if(Flags.do_gpu_correlations){
+        printf("initiating correlations\n");
 
         N = SimParam.N;
         M = SimParam.M;
@@ -554,7 +558,7 @@ bool GpuCorrelations::initiate(const Flag Flags, const SimulationParameters SimP
         do_sc = Flags.do_sc;
         sc_sep = SimParam.sc_sep;
         sc_step = SimParam.sc_step;
-        // nainv = 1 / N;
+        // nainv = 1 / N;omplex(dblprec), dimension(:,:), allocatable :: m_k                ! Correlation in q G(k)
         // Blocks and threads
         maxThreads = 512;
         maxBlocks = 1024; 
@@ -647,14 +651,15 @@ void GpuCorrelations::release() {
 }
 
 void GpuCorrelations::measure(std::size_t mstep) {
-    
+
+    //printf("measuring correlation\n");
     std::size_t curstep = mstep;
     switch (do_sc) {
     case 'C':
         if ((curstep % sc_sep) == 0) {
             GPUSqSum << <blocks_q, threads >> > (emomM, coord, q, r_mid, sc_block_gpu, tasksTot_q, N);
             GPUSqFinalSum_stat << <nq, 1024 >> > (sc_block_gpu, sc_q_gpu, numBlocksX_q);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
             n_samples++;
         }
         break;
@@ -663,7 +668,7 @@ void GpuCorrelations::measure(std::size_t mstep) {
         if ((curstep % sc_step) == 0) {
             GPUSqSum << <blocks_q, threads >> > (emomM, coord, q, r_mid, sc_block_gpu, tasksTot_q, N);
             GPUSqFinalSum_dyn << <nq, 1024 >> > (sc_block_gpu, sc_qt_gpu, numBlocksX_q, t_cur);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
             dt_cpu[t_cur] = delta_t * sc_step;
             t_cur++;
 
@@ -675,7 +680,7 @@ void GpuCorrelations::measure(std::size_t mstep) {
             both_flag = 2;
             GPUSqSum << <blocks_q, threads >> > (emomM, coord, q, r_mid, sc_block_gpu, tasksTot_q, N);
             GPUSqFinalSum_both << <nq, 1024 >> > (sc_block_gpu, sc_q_gpu, sc_qt_gpu, numBlocksX_q, t_cur, both_flag);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
             dt_cpu[t_cur] = delta_t * sc_step;
             t_cur++;
             n_samples++;
@@ -685,7 +690,7 @@ void GpuCorrelations::measure(std::size_t mstep) {
             both_flag = 1;
             GPUSqSum << <blocks_q, threads >> > (emomM, coord, q, r_mid, sc_block_gpu, tasksTot_q, N);
             GPUSqFinalSum_both << <nq, 1024 >> > (sc_block_gpu, sc_q_gpu, sc_qt_gpu, numBlocksX_q, t_cur, both_flag);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
             dt_cpu[t_cur] = delta_t * sc_step;
             t_cur++;
         }
@@ -693,7 +698,7 @@ void GpuCorrelations::measure(std::size_t mstep) {
             both_flag = 0;
             GPUSqSum << <blocks_q, threads >> > (emomM, coord, q, r_mid, sc_block_gpu, tasksTot_q, N);
             GPUSqFinalSum_both << <nq, 1024 >> > (sc_block_gpu, sc_q_gpu, sc_qt_gpu, numBlocksX_q, t_cur, both_flag);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
             n_samples++;
         }
         break;
@@ -743,6 +748,8 @@ void GpuCorrelations::flushCorrelations(hostCorrelations& cpuCorrelations, std::
 
     }
     cudaDeviceSynchronize();
+    fortran_print_correlations();
+
 
 }
 

@@ -61,6 +61,8 @@ FortranCorrelation::FortranCorrelation(const GpuTensor<real, 3>& p1, const GpuTe
       // cudaHostAlloc(&pinned_emom, emom.bytes(), cudaHostAllocDefault);
       // cudaHostAlloc(&pinned_mmom, mmom.bytes(), cudaHostAllocDefault);
    }
+
+   //printf("QUEUE\n\n");
 }
 
 // Destructor
